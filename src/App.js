@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 const generatePattern = () => {
   let pattern = [];
@@ -30,7 +30,7 @@ const parsePattern = (pattern) => {
     }
 
     return {
-      id: roundIndex,
+      id: roundIndex + 1, // Ensure round IDs start from 1
       stitches,
       totalStitches,
       formattedPattern,
@@ -38,53 +38,65 @@ const parsePattern = (pattern) => {
   });
 };
 
+// Hardcoded round transition map
+const roundMap = {};
+for (let i = 1; i <= 100; i++) {
+  roundMap[i] = i + 1;
+}
+
 function App() {
   const [pattern, setPattern] = useState(generatePattern());
   const [rounds, setRounds] = useState(parsePattern(pattern));
-  const [currentRound, setCurrentRound] = useState(0);
+  const [currentRound, setCurrentRound] = useState(1); // Start at round 1
   const [currentStitch, setCurrentStitch] = useState(0);
   const [showAllRounds, setShowAllRounds] = useState(false);
 
   useEffect(() => {
     const parsedRounds = parsePattern(pattern);
     setRounds(parsedRounds);
-    setCurrentRound(0);
+    setCurrentRound(1);
     setCurrentStitch(0);
   }, [pattern]);
 
   const totalStitches = rounds.reduce((acc, round) => acc + round.totalStitches, 0);
   const totalCompleted = rounds
-    .slice(0, currentRound)
+    .filter((round) => round.id < currentRound)
     .reduce((acc, round) => acc + round.totalStitches, 0) + currentStitch;
 
-  const handleKeyPress = (event) => {
+  // ✅ Ensures spacebar transition remains correct
+  const handleKeyPress = useCallback((event) => {
     if (event.key === " ") {
-      event.preventDefault(); // Prevents unwanted scrolling
-      setCurrentStitch((prev) => {
-        const nextStitch = prev + 1;
-        if (nextStitch >= rounds[currentRound].stitches.length) {
-          if (currentRound + 1 < rounds.length) {
-            setCurrentRound((prevRound) => prevRound + 1);
+      event.preventDefault(); // Prevent scrolling
+
+      setCurrentStitch((prevStitch) => {
+        const nextStitch = prevStitch + 1;
+
+        if (nextStitch >= rounds.find((r) => r.id === currentRound)?.stitches.length) {
+          const nextRound = roundMap[currentRound] || currentRound;
+
+          if (rounds.some((r) => r.id === nextRound)) {
+            setCurrentRound(nextRound);
             return 0;
           }
         }
+
         return nextStitch;
       });
     } else if (event.key === "Backspace") {
-      event.preventDefault(); // Prevents unwanted scrolling
+      event.preventDefault();
       setCurrentStitch((prev) => Math.max(prev - 1, 0));
     }
-  };
+  }, [rounds, currentRound]);
 
   const handleClick = (roundIndex, stitchIndex) => {
-    setCurrentRound(roundIndex);
+    setCurrentRound(rounds[roundIndex]?.id || 1);
     setCurrentStitch(stitchIndex);
   };
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
-  }, []);
+  }, [handleKeyPress]);
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-gradient-to-br from-[#8a54c4] via-[#935ef9] to-[#b35ccc] text-white p-6">
@@ -114,45 +126,45 @@ function App() {
 
       {/* Round Titles & Counters */}
       <div className="w-[70%] space-y-6">
-        {rounds.map((round, roundIndex) => {
-          if (!showAllRounds && (roundIndex < currentRound - 1 || roundIndex > currentRound + 1)) {
-            return null; // Hide rounds except the previous, current, and next
+        {rounds.map((round) => {
+          if (!showAllRounds && (round.id < currentRound - 1 || round.id > currentRound + 1)) {
+            return null;
           }
 
-          const isCompleted = roundIndex < currentRound;
-          const isCurrent = roundIndex === currentRound;
+          const isCompleted = round.id < currentRound;
+          const isCurrent = round.id === currentRound;
+          const opacityClass = isCompleted ? "opacity-50" : "opacity-100";
 
           return (
-            <div key={roundIndex} className="space-y-2">
+            <div key={round.id} className="space-y-2">
               {/* Round Title & Counter */}
               <div
-                className={`flex justify-between items-center px-4 py-2 rounded-lg transition-opacity ${
-                  isCompleted ? "bg-green-600 opacity-50" : isCurrent ? "bg-[#5b1eb8]" : "bg-[#8a54c4]"
+                className={`flex justify-between items-center px-4 py-2 rounded-lg transition-opacity ${opacityClass} ${
+                  isCurrent ? "bg-[#5b1eb8]" : "bg-[#8a54c4]"
                 }`}
               >
-                <h3 className="text-md font-bold flex items-center">
-                  Round {roundIndex + 1}: {round.formattedPattern} [{round.totalStitches}]
-                  {isCompleted && <span className="ml-2">✔️</span>}
+                <h3 className="text-md font-bold">
+                  Round {round.id}: {round.formattedPattern} [{round.totalStitches}]
                 </h3>
-                <h3 className={`text-md font-bold ${isCompleted ? "opacity-50" : ""}`}>
+                <h3 className="text-md font-bold">
                   {isCompleted
-                    ? `${round.totalStitches}/${round.totalStitches}`
+                    ? `${round.totalStitches}/${round.totalStitches} ✔️`
                     : isCurrent
                     ? `${currentStitch}/${round.totalStitches}`
-                    : ""}
+                    : `0/${round.totalStitches}`} {/* ✅ Future rounds now always show 0 */}
                 </h3>
               </div>
 
               {/* Stitch Tracker */}
-              <div className={`p-4 rounded-lg transition-opacity ${isCompleted ? "opacity-50" : "opacity-100"}`}>
+              <div className={`p-4 rounded-lg transition-opacity ${opacityClass}`}>
                 <div className="flex flex-wrap justify-start gap-2">
                   {round.stitches.map((stitch, stitchIndex) => (
                     <span
                       key={stitchIndex}
-                      onClick={() => handleClick(roundIndex, stitchIndex)}
+                      onClick={() => handleClick(round.id - 1, stitchIndex)}
                       className={`px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
                         isCompleted
-                          ? "bg-green-700 text-white border-green-500"
+                          ? "bg-[#725394] text-gray-300 border-[#5a3c74] opacity-50"
                           : isCurrent && stitchIndex === currentStitch
                           ? "bg-[#3d1380] text-white border-[#210a4a]"
                           : "bg-[#8a54c4] text-gray-200 border-[#7359a1]"
