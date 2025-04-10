@@ -1,14 +1,17 @@
 import { useState, useEffect, useCallback } from "react";
 
 const generatePattern = () => {
-  return [
-    "Round 1: (sc, inc) x 6",
-    "Round 2: (2 sc, inc) x 6",
-    "Round 3: (3 sc, inc) x 6",
-    "// Insert safety eyes between rounds 3 and 4",
-    "Round 4: (4 sc, inc) x 6",
-    "Round 5: (5 sc, inc) x 6"
-  ].join("\n");
+  let lines = [];
+  for (let i = 1; i <= 30; i++) {
+    lines.push(`Round ${i}: (${Math.max(1, Math.floor(i / 3))} sc, inc) x 6`);
+    if (i === 3) {
+      lines.push(`// Sample note between round 3 and 4`);
+    }
+    if (i === 10 || i === 20) {
+      lines.push(`// Note between round ${i} and ${i + 1}`);
+    }
+  }
+  return lines.join("\n");
 };
 
 const parsePattern = (pattern) => {
@@ -61,12 +64,10 @@ function App() {
   const [index, setIndex] = useState(0);
   const [stitchIndex, setStitchIndex] = useState(0);
   const [showAll, setShowAll] = useState(false);
+  const [trackingStarted, setTrackingStarted] = useState(false);
 
   useEffect(() => {
-    const parsed = parsePattern(pattern);
-    setSteps(parsed);
-    setIndex(0);
-    setStitchIndex(0);
+    setSteps(parsePattern(pattern));
   }, [pattern]);
 
   const current = steps[index];
@@ -88,9 +89,18 @@ function App() {
       .reduce((sum, step) => sum + step.totalStitches, 0) +
     (!current?.isNote ? Math.min(stitchIndex, current?.stitches.length) : 0);
 
+  const toggleTracking = () => {
+    if (!trackingStarted) {
+      setSteps(parsePattern(pattern));
+      setIndex(0);
+      setStitchIndex(0);
+    }
+    setTrackingStarted((prev) => !prev);
+  };
+
   const handleKeyPress = useCallback(
     (e) => {
-      if (!current) return;
+      if (!trackingStarted || !current) return;
 
       if (e.key === " ") {
         e.preventDefault();
@@ -113,7 +123,7 @@ function App() {
         }
       }
     },
-    [current, index, stitchIndex, steps]
+    [trackingStarted, current, index, stitchIndex, steps]
   );
 
   useEffect(() => {
@@ -122,8 +132,14 @@ function App() {
   }, [handleKeyPress]);
 
   const handleClick = (stepIndex, stitchIdx) => {
+    if (!trackingStarted) return;
     setIndex(stepIndex);
-    setStitchIndex(stitchIdx);
+    setStitchIndex(stitchIdx || 0);
+  };
+
+  const handlePatternChange = (e) => {
+    setPattern(e.target.value);
+    setTrackingStarted(false); // reset tracking if edited
   };
 
   return (
@@ -136,34 +152,64 @@ function App() {
         </h2>
       </div>
 
-      {/* Pattern Input */}
-      <textarea
-        className="w-[50%] p-2 mb-4 text-black rounded-lg resize-y"
-        rows="4"
-        value={pattern}
-        onChange={(e) => setPattern(e.target.value)}
-      />
+      {/* Textarea with glow when NOT tracking */}
+      <div className="w-[50%] relative mb-2">
+        <textarea
+          className={`w-full p-2 text-black rounded-lg resize-y transition-all duration-300 ${
+            trackingStarted
+              ? "opacity-40 shadow-none"
+              : "opacity-100 shadow-[0_0_8px_2px_rgba(255,255,255,0.3)]"
+          }`}
+          rows="6"
+          value={pattern}
+          onChange={handlePatternChange}
+          placeholder="Paste or type your pattern here..."
+        />
+      </div>
 
-      <button
-        onClick={() => setShowAll((v) => !v)}
-        className="bg-[#5b1eb8] px-4 py-2 rounded-lg mb-4"
-      >
-        {showAll ? "Show Focused View" : "Show All Rounds"}
-      </button>
+      {/* Buttons */}
+      <div className="flex gap-4 mb-4">
+        <button
+          onClick={toggleTracking}
+          className="bg-[#4e1f9d] px-4 py-2 rounded-lg"
+        >
+          {trackingStarted ? "Pause Tracker" : "Start Tracker"}
+        </button>
+        <button
+          onClick={() => setShowAll((v) => !v)}
+          className="bg-[#5b1eb8] px-4 py-2 rounded-lg"
+        >
+          {showAll ? "Hide Extra Rounds" : "Display All Rounds"}
+        </button>
+      </div>
 
-      {/* Step Display */}
+      {/* Tracker Paused Message */}
+      {!trackingStarted && (
+        <div className="text-sm bg-white bg-opacity-10 text-center text-white py-2 rounded-md mb-4 w-[70%]">
+          🧵 Tracker is paused. Click <strong>Start Tracker</strong> to begin.
+        </div>
+      )}
+
+      {/* Tracker */}
       <div className="w-[70%] space-y-6">
         {displaySteps.map((step, i) => {
           const stepIndex = steps.indexOf(step);
           const isCompleted = stepIndex < index;
           const isCurrent = stepIndex === index;
-          const opacity = isCompleted ? "opacity-50" : "opacity-100";
+
+          const dimmed = !trackingStarted || isCompleted;
+          const opacity = dimmed ? "opacity-50" : "opacity-100";
+          const highlightCurrent = trackingStarted && isCurrent;
+
+          const containerClass = highlightCurrent
+            ? "bg-[#5b1eb8]"
+            : "bg-[#8a54c4]";
 
           if (step.isNote) {
             return (
               <div key={step.id} className="space-y-2">
                 <div
-                  className={`flex justify-between items-center px-4 py-2 rounded-lg ${isCurrent ? "bg-[#5b1eb8]" : "bg-[#8a54c4]"} ${opacity}`}
+                  className={`flex justify-between items-center px-4 py-2 rounded-lg ${containerClass} ${opacity}`}
                 >
                   <h3 className="text-md font-bold flex items-center">
                     <span className="mr-2">📌</span> {step.instruction}
@@ -182,7 +228,7 @@ function App() {
           return (
             <div key={step.id} className="space-y-2">
               <div
-                className={`flex justify-between items-center px-4 py-2 rounded-lg ${isCurrent ? "bg-[#5b1eb8]" : "bg-[#8a54c4]"} ${opacity}`}
+                className={`flex justify-between items-center px-4 py-2 rounded-lg ${containerClass} ${opacity}`}
               >
                 <h3 className="text-md font-bold">
                   Round {step.id}: {step.raw.match(/\(.*?\) x \d+/)?.[0] || step.raw} [{step.totalStitches}]
@@ -216,10 +262,15 @@ function App() {
         })}
       </div>
 
+      {/* Help Text */}
       <p className="mt-6 text-sm opacity-80">
-        Press <strong>Space</strong> to move forward, <strong>Backspace</strong> to undo, or <strong>click</strong> a stitch to select it.
+        Paste your pattern and click <strong>Start Tracker</strong> to begin.
       </p>
-      <p className="mt-2 text-sm opacity-80">
+      <p className="text-sm opacity-80">
+        Press <strong>Space</strong> to move forward, <strong>Backspace</strong> to undo, or{" "}
+        <strong>click</strong> a stitch to select it.
+      </p>
+      <p className="text-sm opacity-80 mt-1">
         Add text instructions by starting a line with <strong>//</strong>
       </p>
     </div>
