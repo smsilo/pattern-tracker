@@ -1,3 +1,5 @@
+// START OF FILE
+
 import React, { useState, useEffect, useCallback } from "react";
 
 const generatePattern = () => {
@@ -58,6 +60,27 @@ const parsePattern = (pattern) => {
   });
 };
 
+function Icon({ type }) {
+  const icons = {
+    play: (
+      <svg className="w-4 h-4 mr-2 fill-white" viewBox="0 0 20 20">
+        <path d="M4 4l12 6-12 6z" />
+      </svg>
+    ),
+    pause: (
+      <svg className="w-4 h-4 mr-2 fill-white" viewBox="0 0 20 20">
+        <path d="M6 4h2v12H6zm6 0h2v12h-2z" />
+      </svg>
+    ),
+    restart: (
+      <svg className="w-4 h-4 mr-2 fill-white" viewBox="0 0 24 24">
+        <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+      </svg>
+    ),
+  };
+  return icons[type] || null;
+}
+
 function App() {
   const [pattern, setPattern] = useState(generatePattern());
   const [steps, setSteps] = useState([]);
@@ -65,6 +88,7 @@ function App() {
   const [stitchIndex, setStitchIndex] = useState(0);
   const [showAll, setShowAll] = useState(false);
   const [trackingStarted, setTrackingStarted] = useState(false);
+  const [trackingPaused, setTrackingPaused] = useState(false);
 
   useEffect(() => {
     setSteps(parsePattern(pattern));
@@ -89,22 +113,37 @@ function App() {
       .reduce((sum, step) => sum + step.totalStitches, 0) +
     (!current?.isNote ? Math.min(stitchIndex, current?.stitches.length) : 0);
 
-  const toggleTracking = () => {
-    if (!trackingStarted) {
-      setSteps(parsePattern(pattern));
-      setIndex(0);
-      setStitchIndex(0);
-    }
-    setTrackingStarted((prev) => !prev);
+  const startTracker = () => {
+    setSteps(parsePattern(pattern));
+    setIndex(0);
+    setStitchIndex(0);
+    setTrackingStarted(true);
+    setTrackingPaused(false);
+  };
+
+  const pauseTracker = () => {
+    setTrackingPaused(true);
+  };
+
+  const resumeTracker = () => {
+    const newSteps = parsePattern(pattern);
+    const currentStep = steps[index];
+    const matchIndex = newSteps.findIndex((step) =>
+      currentStep?.isNote
+        ? step.isNote && step.instruction === currentStep.instruction
+        : !step.isNote && step.raw === currentStep.raw
+    );
+    setSteps(newSteps);
+    setIndex(matchIndex !== -1 ? matchIndex : 0);
+    setTrackingPaused(false);
   };
 
   const handleKeyPress = useCallback(
     (e) => {
-      if (!trackingStarted || !current) return;
+      if (!trackingStarted || trackingPaused || !current) return;
 
       if (e.key === " ") {
         e.preventDefault();
-
         if (!current.isNote && stitchIndex + 1 < current.stitches.length) {
           setStitchIndex((s) => s + 1);
         } else if (index < steps.length - 1) {
@@ -113,7 +152,6 @@ function App() {
         }
       } else if (e.key === "Backspace") {
         e.preventDefault();
-
         if (!current.isNote && stitchIndex > 0) {
           setStitchIndex((s) => s - 1);
         } else if (index > 0) {
@@ -123,7 +161,7 @@ function App() {
         }
       }
     },
-    [trackingStarted, current, index, stitchIndex, steps]
+    [trackingStarted, trackingPaused, current, index, stitchIndex, steps]
   );
 
   useEffect(() => {
@@ -132,19 +170,20 @@ function App() {
   }, [handleKeyPress]);
 
   const handleClick = (stepIndex, stitchIdx = 0) => {
-    if (!trackingStarted) return;
+    if (!trackingStarted || trackingPaused) return;
     setIndex(stepIndex);
     setStitchIndex(stitchIdx);
   };
 
   const handlePatternChange = (e) => {
     setPattern(e.target.value);
-    setTrackingStarted(false); // reset tracking if edited
+    if (trackingStarted && !trackingPaused) {
+      pauseTracker();
+    }
   };
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-gradient-to-br from-[#8a54c4] via-[#935ef9] to-[#b35ccc] text-white p-6">
-      {/* Header */}
       <div className="flex w-full justify-between items-center px-6 mb-4">
         <h1 className="text-3xl font-bold">Crochet Pattern Tracker</h1>
         <h2 className="text-lg font-semibold bg-[#8a54c4] px-4 py-2 rounded-lg">
@@ -152,11 +191,10 @@ function App() {
         </h2>
       </div>
 
-      {/* Textarea with glow when NOT tracking */}
       <div className="w-[50%] relative mb-2">
         <textarea
           className={`w-full p-2 text-black rounded-lg resize-y transition-all duration-300 ${
-            trackingStarted
+            trackingStarted && !trackingPaused
               ? "opacity-40 shadow-none"
               : "opacity-100 shadow-[0_0_8px_2px_rgba(255,255,255,0.3)]"
           }`}
@@ -167,40 +205,72 @@ function App() {
         />
       </div>
 
-      {/* Buttons */}
-      <div className="flex gap-4 mb-4">
+      <div className="flex gap-4 mb-4 flex-wrap">
+        {!trackingStarted && (
+          <button
+            onClick={startTracker}
+            className="bg-[#7a4fd2] px-4 py-2 rounded-lg flex items-center"
+          >
+            Start Tracker
+          </button>
+        )}
+
+        {trackingStarted && !trackingPaused && (
+          <button
+            onClick={pauseTracker}
+            className="bg-[#7a4fd2] px-4 py-2 rounded-lg flex items-center"
+          >
+            <Icon type="pause" />
+            Pause Tracker
+          </button>
+        )}
+
+        {trackingStarted && trackingPaused && (
+          <>
+            <button
+              onClick={resumeTracker}
+              className="bg-[#7a4fd2] px-4 py-2 rounded-lg flex items-center"
+            >
+              <Icon type="play" />
+              Resume Tracker
+            </button>
+            <button
+              onClick={startTracker}
+              className="bg-[#7a4fd2] px-4 py-2 rounded-lg flex items-center"
+            >
+              <Icon type="restart" />
+              Restart Tracker
+            </button>
+          </>
+        )}
+
         <button
-          onClick={toggleTracking}
-          className="bg-[#4e1f9d] px-4 py-2 rounded-lg"
-        >
-          {trackingStarted ? "Pause Tracker" : "Start Tracker"}
-        </button>
-        <button
+          disabled={!trackingStarted || trackingPaused}
           onClick={() => setShowAll((v) => !v)}
-          className="bg-[#5b1eb8] px-4 py-2 rounded-lg"
+          className={`px-4 py-2 rounded-lg ${
+            trackingStarted && !trackingPaused
+              ? "bg-[#7a4fd2]"
+              : "bg-[#7a4fd2] opacity-40 cursor-not-allowed"
+          }`}
         >
           {showAll ? "Hide Extra Rounds" : "Display All Rounds"}
         </button>
       </div>
 
-      {/* Tracker Paused Message */}
-      {!trackingStarted && (
+      {trackingStarted && trackingPaused && (
         <div className="text-sm bg-white bg-opacity-10 text-center text-white py-2 rounded-md mb-4 w-[70%]">
-          🧵 Tracker is paused. Click <strong>Start Tracker</strong> to begin.
+          🧵 Tracker is paused. Click <strong>Resume</strong> or <strong>Restart</strong> to continue.
         </div>
       )}
 
-      {/* Tracker */}
       <div className="w-[70%] space-y-6">
         {displaySteps.map((step, i) => {
           const stepIndex = steps.indexOf(step);
           const isCompleted = stepIndex < index;
           const isCurrent = stepIndex === index;
-
-          const dimmed = !trackingStarted || isCompleted;
+          const dimmed = !trackingStarted || trackingPaused || isCompleted;
           const opacity = dimmed ? "opacity-50" : "opacity-100";
-          const highlightCurrent = trackingStarted && isCurrent;
-
+          const highlightCurrent = trackingStarted && !trackingPaused && isCurrent;
           const containerClass = highlightCurrent
             ? "bg-[#5b1eb8]"
             : "bg-[#8a54c4]";
@@ -263,7 +333,6 @@ function App() {
         })}
       </div>
 
-      {/* Help Text */}
       <p className="mt-6 text-sm opacity-80">
         Paste your pattern and click <strong>Start Tracker</strong> to begin.
       </p>
