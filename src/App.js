@@ -1,6 +1,4 @@
-// START OF FILE
-
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 
 const generatePattern = () => {
   let lines = [];
@@ -89,18 +87,23 @@ function App() {
   const [showAll, setShowAll] = useState(false);
   const [trackingStarted, setTrackingStarted] = useState(false);
   const [trackingPaused, setTrackingPaused] = useState(false);
+  const currentRef = useRef(null);
 
   useEffect(() => {
     setSteps(parsePattern(pattern));
   }, [pattern]);
 
+  useEffect(() => {
+    if (showAll && currentRef.current) {
+      currentRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [showAll, index]);
+
   const current = steps[index];
   const previous = steps[index - 1];
   const next = steps[index + 1];
 
-  const displaySteps = showAll
-    ? steps
-    : [previous, current, next].filter(Boolean);
+  const displaySteps = showAll ? steps : [previous, current, next].filter(Boolean);
 
   const totalStitches = steps
     .filter((s) => !s.isNote)
@@ -175,13 +178,6 @@ function App() {
     setStitchIndex(stitchIdx);
   };
 
-  const handlePatternChange = (e) => {
-    setPattern(e.target.value);
-    if (trackingStarted && !trackingPaused) {
-      pauseTracker();
-    }
-  };
-
   return (
     <div className="min-h-screen flex flex-col items-center bg-gradient-to-br from-[#8a54c4] via-[#935ef9] to-[#b35ccc] text-white p-6">
       <div className="flex w-full justify-between items-center px-6 mb-4">
@@ -200,7 +196,7 @@ function App() {
           }`}
           rows="6"
           value={pattern}
-          onChange={handlePatternChange}
+          onChange={(e) => setPattern(e.target.value)}
           placeholder="Paste or type your pattern here..."
         />
       </div>
@@ -266,21 +262,22 @@ function App() {
       <div className="w-[70%] space-y-6">
         {displaySteps.map((step, i) => {
           const stepIndex = steps.indexOf(step);
-          const isCompleted = stepIndex < index;
           const isCurrent = stepIndex === index;
-          const dimmed = !trackingStarted || trackingPaused || isCompleted;
-          const opacity = dimmed ? "opacity-50" : "opacity-100";
-          const highlightCurrent = trackingStarted && !trackingPaused && isCurrent;
-          const containerClass = highlightCurrent
-            ? "bg-[#5b1eb8]"
+          const containerClass = isCurrent
+            ? "bg-[#5b1eb8] scale-[1.02] transition-all duration-500 ease-in-out"
             : "bg-[#8a54c4]";
+
+          const complete = isCurrent ? Math.min(stitchIndex, step.stitches.length) : 0;
+
+          const ref = isCurrent && showAll ? currentRef : null;
 
           if (step.isNote) {
             return (
               <div key={step.id} className="space-y-2">
                 <div
+                  ref={ref}
                   onClick={() => handleClick(stepIndex, 0)}
-                  className={`flex justify-between items-center px-4 py-2 rounded-lg ${containerClass} ${opacity} cursor-pointer`}
+                  className={`flex justify-between items-center px-4 py-2 rounded-lg cursor-pointer ${containerClass}`}
                 >
                   <h3 className="text-md font-bold flex items-center">
                     <span className="mr-2">📌</span> {step.instruction}
@@ -290,35 +287,28 @@ function App() {
             );
           }
 
-          const complete = isCompleted
-            ? step.totalStitches
-            : isCurrent
-            ? Math.min(stitchIndex, step.stitches.length)
-            : 0;
-
           return (
             <div key={step.id} className="space-y-2">
               <div
-                className={`flex justify-between items-center px-4 py-2 rounded-lg ${containerClass} ${opacity}`}
+                ref={ref}
+                className={`flex justify-between items-center px-4 py-2 rounded-lg ${containerClass}`}
               >
                 <h3 className="text-md font-bold">
                   Round {step.id}: {step.raw.match(/\(.*?\) x \d+/)?.[0] || step.raw} [{step.totalStitches}]
                 </h3>
                 <h3 className="text-md font-bold">
-                  {complete}/{step.totalStitches} {isCompleted && "✔️"}
+                  {complete}/{step.totalStitches}
                 </h3>
               </div>
 
-              <div className={`p-4 rounded-lg ${opacity}`}>
+              <div className={`p-4 rounded-lg ${isCurrent ? "opacity-100" : "opacity-50"}`}>
                 <div className="flex flex-wrap gap-2">
                   {step.stitches.map((s, si) => (
                     <span
                       key={si}
                       onClick={() => handleClick(stepIndex, si)}
                       className={`px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
-                        isCompleted
-                          ? "bg-[#725394] text-gray-300 border-[#5a3c74]"
-                          : isCurrent && si === stitchIndex
+                        isCurrent && si === stitchIndex
                           ? "bg-[#3d1380] text-white border-[#210a4a]"
                           : "bg-[#8a54c4] text-gray-200 border-[#7359a1]"
                       }`}
