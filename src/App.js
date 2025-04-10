@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 const generatePattern = () => {
   let lines = [];
@@ -131,10 +131,10 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeyPress);
   }, [handleKeyPress]);
 
-  const handleClick = (stepIndex, stitchIdx) => {
+  const handleClick = (stepIndex, stitchIdx = 0) => {
     if (!trackingStarted) return;
     setIndex(stepIndex);
-    setStitchIndex(stitchIdx || 0);
+    setStitchIndex(stitchIdx);
   };
 
   const handlePatternChange = (e) => {
@@ -209,7 +209,8 @@ function App() {
             return (
               <div key={step.id} className="space-y-2">
                 <div
-                  className={`flex justify-between items-center px-4 py-2 rounded-lg ${containerClass} ${opacity}`}
+                  onClick={() => handleClick(stepIndex, 0)}
+                  className={`flex justify-between items-center px-4 py-2 rounded-lg ${containerClass} ${opacity} cursor-pointer`}
                 >
                   <h3 className="text-md font-bold flex items-center">
                     <span className="mr-2">📌</span> {step.instruction}
@@ -268,7 +269,7 @@ function App() {
       </p>
       <p className="text-sm opacity-80">
         Press <strong>Space</strong> to move forward, <strong>Backspace</strong> to undo, or{" "}
-        <strong>click</strong> a stitch to select it.
+        <strong>click</strong> a stitch or note to select it.
       </p>
       <p className="text-sm opacity-80 mt-1">
         Add text instructions by starting a line with <strong>//</strong>
