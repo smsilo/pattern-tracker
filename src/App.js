@@ -1,28 +1,43 @@
 import { useState, useEffect, useCallback } from "react";
 
 const generatePattern = () => {
-  let pattern = [];
-  for (let i = 1; i <= 30; i++) {
-    const increaseEvery = Math.max(1, Math.floor(i / 3));
-    pattern.push(`Round ${i}: (${increaseEvery} sc, inc) x 6`);
-  }
-  return pattern.join("\n");
+  return [
+    "Round 1: (sc, inc) x 6",
+    "Round 2: (2 sc, inc) x 6",
+    "Round 3: (3 sc, inc) x 6",
+    "// Insert safety eyes between rounds 3 and 4",
+    "Round 4: (4 sc, inc) x 6",
+    "Round 5: (5 sc, inc) x 6"
+  ].join("\n");
 };
 
 const parsePattern = (pattern) => {
-  return pattern.split("\n").map((round, roundIndex) => {
-    const regex = /(\d*)\s*(sc|inc|dec)/g;
-    let stitches = [];
-    let totalStitches = 0;
-    let formattedPattern = round.match(/\(.*?\) x \d+/)?.[0] || round;
+  const lines = pattern.split("\n");
+  let roundNumber = 1;
+  let noteId = 1;
 
-    round.replace(/\((.*?)\)\s*x\s*(\d+)/g, (_, group, repeat) => {
-      const expanded = Array(Number(repeat)).fill(group).join(" ");
-      round = round.replace(`(${group}) x ${repeat}`, expanded);
-    });
+  return lines.map((line) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("//")) {
+      return {
+        id: `note-${noteId++}`,
+        isNote: true,
+        instruction: trimmed.substring(2).trim(),
+        stitches: [],
+        totalStitches: 0,
+      };
+    }
+
+    const regex = /(\d*)\s*(sc|inc|dec)/g;
+    const expanded = trimmed.replace(/\((.*?)\)\s*x\s*(\d+)/g, (_, group, count) =>
+      Array(Number(count)).fill(group).join(" ")
+    );
 
     let match;
-    while ((match = regex.exec(round)) !== null) {
+    let stitches = [];
+    let totalStitches = 0;
+
+    while ((match = regex.exec(expanded)) !== null) {
       const count = match[1] ? parseInt(match[1]) : 1;
       const stitch = match[2];
       stitches.push(...Array(count).fill(stitch));
@@ -30,73 +45,86 @@ const parsePattern = (pattern) => {
     }
 
     return {
-      id: roundIndex + 1, // Ensure round IDs start from 1
+      id: roundNumber++,
+      isNote: false,
+      instruction: null,
       stitches,
       totalStitches,
-      formattedPattern,
+      raw: trimmed,
     };
   });
 };
 
-// Hardcoded round transition map
-const roundMap = {};
-for (let i = 1; i <= 100; i++) {
-  roundMap[i] = i + 1;
-}
-
 function App() {
   const [pattern, setPattern] = useState(generatePattern());
-  const [rounds, setRounds] = useState(parsePattern(pattern));
-  const [currentRound, setCurrentRound] = useState(1); // Start at round 1
-  const [currentStitch, setCurrentStitch] = useState(0);
-  const [showAllRounds, setShowAllRounds] = useState(false);
+  const [steps, setSteps] = useState([]);
+  const [index, setIndex] = useState(0);
+  const [stitchIndex, setStitchIndex] = useState(0);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
-    const parsedRounds = parsePattern(pattern);
-    setRounds(parsedRounds);
-    setCurrentRound(1);
-    setCurrentStitch(0);
+    const parsed = parsePattern(pattern);
+    setSteps(parsed);
+    setIndex(0);
+    setStitchIndex(0);
   }, [pattern]);
 
-  const totalStitches = rounds.reduce((acc, round) => acc + round.totalStitches, 0);
-  const totalCompleted = rounds
-    .filter((round) => round.id < currentRound)
-    .reduce((acc, round) => acc + round.totalStitches, 0) + currentStitch;
+  const current = steps[index];
+  const previous = steps[index - 1];
+  const next = steps[index + 1];
 
-  // ✅ Ensures spacebar transition remains correct
-  const handleKeyPress = useCallback((event) => {
-    if (event.key === " ") {
-      event.preventDefault(); // Prevent scrolling
+  const displaySteps = showAll
+    ? steps
+    : [previous, current, next].filter(Boolean);
 
-      setCurrentStitch((prevStitch) => {
-        const nextStitch = prevStitch + 1;
+  const totalStitches = steps
+    .filter((s) => !s.isNote)
+    .reduce((sum, step) => sum + step.totalStitches, 0);
 
-        if (nextStitch >= rounds.find((r) => r.id === currentRound)?.stitches.length) {
-          const nextRound = roundMap[currentRound] || currentRound;
+  const completedStitches =
+    steps
+      .slice(0, index)
+      .filter((s) => !s.isNote)
+      .reduce((sum, step) => sum + step.totalStitches, 0) +
+    (!current?.isNote ? Math.min(stitchIndex, current?.stitches.length) : 0);
 
-          if (rounds.some((r) => r.id === nextRound)) {
-            setCurrentRound(nextRound);
-            return 0;
-          }
+  const handleKeyPress = useCallback(
+    (e) => {
+      if (!current) return;
+
+      if (e.key === " ") {
+        e.preventDefault();
+
+        if (!current.isNote && stitchIndex + 1 < current.stitches.length) {
+          setStitchIndex((s) => s + 1);
+        } else if (index < steps.length - 1) {
+          setIndex((i) => i + 1);
+          setStitchIndex(0);
         }
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
 
-        return nextStitch;
-      });
-    } else if (event.key === "Backspace") {
-      event.preventDefault();
-      setCurrentStitch((prev) => Math.max(prev - 1, 0));
-    }
-  }, [rounds, currentRound]);
-
-  const handleClick = (roundIndex, stitchIndex) => {
-    setCurrentRound(rounds[roundIndex]?.id || 1);
-    setCurrentStitch(stitchIndex);
-  };
+        if (!current.isNote && stitchIndex > 0) {
+          setStitchIndex((s) => s - 1);
+        } else if (index > 0) {
+          const prev = steps[index - 1];
+          setIndex((i) => i - 1);
+          setStitchIndex(prev?.stitches.length || 0);
+        }
+      }
+    },
+    [current, index, stitchIndex, steps]
+  );
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
   }, [handleKeyPress]);
+
+  const handleClick = (stepIndex, stitchIdx) => {
+    setIndex(stepIndex);
+    setStitchIndex(stitchIdx);
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-gradient-to-br from-[#8a54c4] via-[#935ef9] to-[#b35ccc] text-white p-6">
@@ -104,11 +132,11 @@ function App() {
       <div className="flex w-full justify-between items-center px-6 mb-4">
         <h1 className="text-3xl font-bold">Crochet Pattern Tracker</h1>
         <h2 className="text-lg font-semibold bg-[#8a54c4] px-4 py-2 rounded-lg">
-          Total Progress: {totalCompleted} / {totalStitches}
+          Total Progress: {completedStitches} / {totalStitches}
         </h2>
       </div>
 
-      {/* Input Box */}
+      {/* Pattern Input */}
       <textarea
         className="w-[50%] p-2 mb-4 text-black rounded-lg resize-y"
         rows="4"
@@ -116,61 +144,69 @@ function App() {
         onChange={(e) => setPattern(e.target.value)}
       />
 
-      {/* Show All Rounds Toggle */}
       <button
-        onClick={() => setShowAllRounds(!showAllRounds)}
+        onClick={() => setShowAll((v) => !v)}
         className="bg-[#5b1eb8] px-4 py-2 rounded-lg mb-4"
       >
-        {showAllRounds ? "Show Focused View" : "Show All Rounds"}
+        {showAll ? "Show Focused View" : "Show All Rounds"}
       </button>
 
-      {/* Round Titles & Counters */}
+      {/* Step Display */}
       <div className="w-[70%] space-y-6">
-        {rounds.map((round) => {
-          if (!showAllRounds && (round.id < currentRound - 1 || round.id > currentRound + 1)) {
-            return null;
+        {displaySteps.map((step, i) => {
+          const stepIndex = steps.indexOf(step);
+          const isCompleted = stepIndex < index;
+          const isCurrent = stepIndex === index;
+          const opacity = isCompleted ? "opacity-50" : "opacity-100";
+
+          if (step.isNote) {
+            return (
+              <div key={step.id} className="space-y-2">
+                <div
+                  className={`flex justify-between items-center px-4 py-2 rounded-lg ${isCurrent ? "bg-[#5b1eb8]" : "bg-[#8a54c4]"} ${opacity}`}
+                >
+                  <h3 className="text-md font-bold flex items-center">
+                    <span className="mr-2">📌</span> {step.instruction}
+                  </h3>
+                </div>
+              </div>
+            );
           }
 
-          const isCompleted = round.id < currentRound;
-          const isCurrent = round.id === currentRound;
-          const opacityClass = isCompleted ? "opacity-50" : "opacity-100";
+          const complete = isCompleted
+            ? step.totalStitches
+            : isCurrent
+            ? Math.min(stitchIndex, step.stitches.length)
+            : 0;
 
           return (
-            <div key={round.id} className="space-y-2">
-              {/* Round Title & Counter */}
+            <div key={step.id} className="space-y-2">
               <div
-                className={`flex justify-between items-center px-4 py-2 rounded-lg transition-opacity ${opacityClass} ${
-                  isCurrent ? "bg-[#5b1eb8]" : "bg-[#8a54c4]"
-                }`}
+                className={`flex justify-between items-center px-4 py-2 rounded-lg ${isCurrent ? "bg-[#5b1eb8]" : "bg-[#8a54c4]"} ${opacity}`}
               >
                 <h3 className="text-md font-bold">
-                  Round {round.id}: {round.formattedPattern} [{round.totalStitches}]
+                  Round {step.id}: {step.raw.match(/\(.*?\) x \d+/)?.[0] || step.raw} [{step.totalStitches}]
                 </h3>
                 <h3 className="text-md font-bold">
-                  {isCompleted
-                    ? `${round.totalStitches}/${round.totalStitches} ✔️`
-                    : isCurrent
-                    ? `${currentStitch}/${round.totalStitches}`
-                    : `0/${round.totalStitches}`} {/* ✅ Future rounds now always show 0 */}
+                  {complete}/{step.totalStitches} {isCompleted && "✔️"}
                 </h3>
               </div>
 
-              {/* Stitch Tracker */}
-              <div className={`p-4 rounded-lg transition-opacity ${opacityClass}`}>
-                <div className="flex flex-wrap justify-start gap-2">
-                  {round.stitches.map((stitch, stitchIndex) => (
+              <div className={`p-4 rounded-lg ${opacity}`}>
+                <div className="flex flex-wrap gap-2">
+                  {step.stitches.map((s, si) => (
                     <span
-                      key={stitchIndex}
-                      onClick={() => handleClick(round.id - 1, stitchIndex)}
+                      key={si}
+                      onClick={() => handleClick(stepIndex, si)}
                       className={`px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
                         isCompleted
-                          ? "bg-[#725394] text-gray-300 border-[#5a3c74] opacity-50"
-                          : isCurrent && stitchIndex === currentStitch
+                          ? "bg-[#725394] text-gray-300 border-[#5a3c74]"
+                          : isCurrent && si === stitchIndex
                           ? "bg-[#3d1380] text-white border-[#210a4a]"
                           : "bg-[#8a54c4] text-gray-200 border-[#7359a1]"
                       }`}
                     >
-                      {stitch}
+                      {s}
                     </span>
                   ))}
                 </div>
@@ -180,10 +216,11 @@ function App() {
         })}
       </div>
 
-      {/* Instructions */}
       <p className="mt-6 text-sm opacity-80">
-        Press <strong>Space</strong> to move forward, <strong>Backspace</strong> to undo, or{" "}
-        <strong>click</strong> a stitch to select it.
+        Press <strong>Space</strong> to move forward, <strong>Backspace</strong> to undo, or <strong>click</strong> a stitch to select it.
+      </p>
+      <p className="mt-2 text-sm opacity-80">
+        Add text instructions by starting a line with <strong>//</strong>
       </p>
     </div>
   );
