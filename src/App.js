@@ -83,6 +83,7 @@ function App() {
   const [showAll, setShowAll] = useState(false);
   const [trackingStarted, setTrackingStarted] = useState(false);
   const [trackingPaused, setTrackingPaused] = useState(false);
+  const [trackByRound, setTrackByRound] = useState(false);
   const currentRef = useRef(null);
 
   useEffect(() => {
@@ -110,7 +111,9 @@ function App() {
       .slice(0, index)
       .filter((s) => !s.isNote)
       .reduce((sum, step) => sum + step.totalStitches, 0) +
-    (!current?.isNote ? Math.min(stitchIndex, current?.stitches.length) : 0);
+    (!current?.isNote && !trackByRound
+      ? Math.min(stitchIndex, current?.stitches.length)
+      : 0);
 
   const startTracker = () => {
     setSteps(parsePattern(pattern));
@@ -141,24 +144,28 @@ function App() {
 
       if (e.key === " ") {
         e.preventDefault();
-        if (!current.isNote && stitchIndex + 1 < current.stitches.length) {
+        if (trackByRound || current.isNote || stitchIndex + 1 >= current.stitches.length) {
+          if (index < steps.length - 1) {
+            setIndex((i) => i + 1);
+            setStitchIndex(0);
+          }
+        } else {
           setStitchIndex((s) => s + 1);
-        } else if (index < steps.length - 1) {
-          setIndex((i) => i + 1);
-          setStitchIndex(0);
         }
       } else if (e.key === "Backspace") {
         e.preventDefault();
-        if (!current.isNote && stitchIndex > 0) {
+        if (trackByRound || current.isNote || stitchIndex === 0) {
+          if (index > 0) {
+            const prev = steps[index - 1];
+            setIndex((i) => i - 1);
+            setStitchIndex(trackByRound || prev.isNote ? 0 : prev.stitches.length - 1);
+          }
+        } else {
           setStitchIndex((s) => s - 1);
-        } else if (index > 0) {
-          const prev = steps[index - 1];
-          setIndex((i) => i - 1);
-          setStitchIndex(prev?.stitches.length || 0);
         }
       }
     },
-    [trackingStarted, trackingPaused, current, index, stitchIndex, steps]
+    [trackingStarted, trackingPaused, current, index, stitchIndex, steps, trackByRound]
   );
 
   useEffect(() => {
@@ -252,7 +259,25 @@ function App() {
         >
           {showAll ? "Hide Extra Rounds" : "Display All Rounds"}
         </button>
+
+        <button
+          disabled={!trackingStarted || trackingPaused}
+          onClick={() => setTrackByRound((prev) => !prev)}
+          className={`px-4 py-2 rounded-lg ${
+            trackingStarted && !trackingPaused
+              ? "bg-[#7a4fd2]"
+              : "bg-[#7a4fd2] opacity-40 cursor-not-allowed"
+          }`}
+        >
+          {trackByRound ? "Track Stitches" : "Track Rounds"}
+        </button>
       </div>
+
+      {trackingStarted && trackingPaused && (
+        <div className="text-sm bg-white bg-opacity-10 text-center text-white py-2 rounded-md mb-4 w-[70%]">
+          🧵 Tracker is paused. Click <strong>Resume</strong> or <strong>Restart</strong> to continue.
+        </div>
+      )}
 
       <div className="w-[70%] space-y-6">
         {displaySteps.map((step, i) => {
@@ -282,7 +307,7 @@ function App() {
                   </h3>
                   {!step.isNote && (
                     <h3 className="text-md font-bold">
-                      {isCurrent
+                      {isCurrent && !trackByRound
                         ? `${Math.min(stitchIndex, step.stitches.length)}/${step.totalStitches}`
                         : `${step.stitches.length}/${step.totalStitches}`}
                     </h3>
@@ -292,27 +317,40 @@ function App() {
 
               {!step.isNote && (
                 <div className={`p-4 rounded-lg ${isCurrent ? "opacity-100" : "opacity-50"}`}>
-                  <div className="flex flex-wrap gap-2">
-                    {step.stitches.map((s, si) => (
-                      <span
-                        key={si}
-                        onClick={() => handleClick(stepIndex, si)}
-                        className={`px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
-                          isCurrent && si === stitchIndex
-                            ? "bg-[#3d1380] text-white border-[#210a4a]"
-                            : "bg-[#8a54c4] text-gray-200 border-[#7359a1]"
-                        }`}
-                      >
-                        {s}
-                      </span>
-                    ))}
-                  </div>
+                  {!trackByRound && (
+                    <div className="flex flex-wrap gap-2">
+                      {step.stitches.map((s, si) => (
+                        <span
+                          key={si}
+                          onClick={() => handleClick(stepIndex, si)}
+                          className={`px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
+                            isCurrent && si === stitchIndex
+                              ? "bg-[#3d1380] text-white border-[#210a4a]"
+                              : "bg-[#8a54c4] text-gray-200 border-[#7359a1]"
+                          }`}
+                        >
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           );
         })}
       </div>
+
+      <p className="mt-6 text-sm opacity-80">
+        Paste your pattern and click <strong>Start Tracker</strong> to begin.
+      </p>
+      <p className="text-sm opacity-80">
+        Press <strong>Space</strong> to move forward, <strong>Backspace</strong> to undo, or{" "}
+        <strong>click</strong> a stitch or note to select it.
+      </p>
+      <p className="text-sm opacity-80 mt-1">
+        Add text instructions by starting a line with <strong>//</strong>
+      </p>
     </div>
   );
 }
