@@ -1,0 +1,335 @@
+warning: in the working copy of 'src/App.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/src/App.js b/src/App.js[m
+[1mindex 4ad7c51..1d279c5 100644[m
+[1m--- a/src/App.js[m
+[1m+++ b/src/App.js[m
+[36m@@ -10,6 +10,24 @@[m [mconst generatePattern = () => {[m
+   return lines.join("\n");[m
+ };[m
+ [m
+[32m+[m[32mconst getStitchColor = (stitchType) => {[m
+[32m+[m[32m  const colors = {[m
+[32m+[m[32m    sc: '#7a4fd2',    // Original purple[m
+[32m+[m[32m    inc: '#824fd2',   // Slightly lighter purple[m
+[32m+[m[32m    dec: '#724fd2'    // Slightly darker purple[m
+[32m+[m[32m  };[m
+[32m+[m[32m  return colors[stitchType] || '#7a4fd2';[m
+[32m+[m[32m};[m
+[32m+[m
+[32m+[m[32mconst getDarkerColor = (stitchType) => {[m
+[32m+[m[32m  const colors = {[m
+[32m+[m[32m    sc: '#3d1380',    // Darker version of original[m
+[32m+[m[32m    inc: '#421380',   // Darker version of inc[m
+[32m+[m[32m    dec: '#381380'    // Darker version of dec[m
+[32m+[m[32m  };[m
+[32m+[m[32m  return colors[stitchType] || '#3d1380';[m
+[32m+[m[32m};[m
+[32m+[m
+ const parsePattern = (pattern) => {[m
+   const lines = pattern.split("\n");[m
+   let roundNumber = 1;[m
+[36m@@ -28,6 +46,7 @@[m [mconst parsePattern = (pattern) => {[m
+     }[m
+ [m
+     const regex = /(\d*)\s*(sc|inc|dec)/g;[m
+[32m+[m[32m    const clusterMatch = trimmed.match(/\((.*?)\)\s*x\s*(\d+)/);[m
+     const expanded = trimmed.replace(/\((.*?)\)\s*x\s*(\d+)/g, (_, group, count) =>[m
+       Array(Number(count)).fill(group).join(" ")[m
+     );[m
+[36m@@ -35,12 +54,34 @@[m [mconst parsePattern = (pattern) => {[m
+     let match;[m
+     let stitches = [];[m
+     let totalStitches = 0;[m
+[32m+[m[32m    let clusters = [];[m
+[32m+[m
+[32m+[m[32m    if (clusterMatch) {[m
+[32m+[m[32m      const [_, clusterPattern, repeatCount] = clusterMatch;[m
+[32m+[m[32m      const clusterStitches = [];[m
+[32m+[m[32m      let tempRegex = /(\d*)\s*(sc|inc|dec)/g;[m
+[32m+[m[32m      while ((match = tempRegex.exec(clusterPattern)) !== null) {[m
+[32m+[m[32m        const count = match[1] ? parseInt(match[1]) : 1;[m
+[32m+[m[32m        const stitch = match[2];[m
+[32m+[m[32m        clusterStitches.push(...Array(count).fill(stitch));[m
+[32m+[m[32m      }[m
+ [m
+[31m-    while ((match = regex.exec(expanded)) !== null) {[m
+[31m-      const count = match[1] ? parseInt(match[1]) : 1;[m
+[31m-      const stitch = match[2];[m
+[31m-      stitches.push(...Array(count).fill(stitch));[m
+[31m-      totalStitches += count;[m
+[32m+[m[32m      for (let i = 0; i < Number(repeatCount); i++) {[m
+[32m+[m[32m        clusters.push({[m
+[32m+[m[32m          number: i + 1,[m
+[32m+[m[32m          stitches: [...clusterStitches][m
+[32m+[m[32m        });[m
+[32m+[m[32m        stitches.push(...clusterStitches);[m
+[32m+[m[32m        totalStitches += clusterStitches.length;[m
+[32m+[m[32m      }[m
+[32m+[m[32m    } else {[m
+[32m+[m[32m      while ((match = regex.exec(expanded)) !== null) {[m
+[32m+[m[32m        const count = match[1] ? parseInt(match[1]) : 1;[m
+[32m+[m[32m        const stitch = match[2];[m
+[32m+[m[32m        stitches.push(...Array(count).fill(stitch));[m
+[32m+[m[32m        totalStitches += count;[m
+[32m+[m[32m      }[m
+[32m+[m[32m      clusters = [{number: 1, stitches: stitches}];[m
+     }[m
+ [m
+     return {[m
+[36m@@ -48,6 +89,7 @@[m [mconst parsePattern = (pattern) => {[m
+       isNote: false,[m
+       instruction: null,[m
+       stitches,[m
+[32m+[m[32m      clusters,[m
+       totalStitches,[m
+       raw: trimmed,[m
+     };[m
+[36m@@ -83,8 +125,20 @@[m [mfunction App() {[m
+   const [showAll, setShowAll] = useState(false);[m
+   const [trackingStarted, setTrackingStarted] = useState(false);[m
+   const [trackingPaused, setTrackingPaused] = useState(false);[m
+[32m+[m[32m  const [trackByRound, setTrackByRound] = useState(false);[m
+[32m+[m[32m  const [settings, setSettings] = useState(() => {[m
+[32m+[m[32m    const saved = localStorage.getItem('patternTrackerSettings');[m
+[32m+[m[32m    return saved ? JSON.parse(saved) : {[m
+[32m+[m[32m      colorCodeStitches: true,[m
+[32m+[m[32m      groupClusters: true[m
+[32m+[m[32m    };[m
+[32m+[m[32m  });[m
+   const currentRef = useRef(null);[m
+ [m
+[32m+[m[32m  useEffect(() => {[m
+[32m+[m[32m    localStorage.setItem('patternTrackerSettings', JSON.stringify(settings));[m
+[32m+[m[32m  }, [settings]);[m
+[32m+[m
+   useEffect(() => {[m
+     setSteps(parsePattern(pattern));[m
+   }, [pattern]);[m
+[36m@@ -96,10 +150,14 @@[m [mfunction App() {[m
+   }, [showAll, index]);[m
+ [m
+   const current = steps[index];[m
+[31m-  const previous = steps[index - 1];[m
+[31m-  const next = steps[index + 1];[m
+ [m
+[31m-  const displaySteps = showAll ? steps : [previous, current, next].filter(Boolean);[m
+[32m+[m[32m  const getDisplaySteps = () => {[m
+[32m+[m[32m    if (showAll) return steps;[m
+[32m+[m[32m    const range = trackByRound ? 2 : 1;[m
+[32m+[m[32m    return steps.slice(Math.max(0, index - range), index + range + 1);[m
+[32m+[m[32m  };[m
+[32m+[m
+[32m+[m[32m  const displaySteps = getDisplaySteps();[m
+ [m
+   const totalStitches = steps[m
+     .filter((s) => !s.isNote)[m
+[36m@@ -110,7 +168,9 @@[m [mfunction App() {[m
+       .slice(0, index)[m
+       .filter((s) => !s.isNote)[m
+       .reduce((sum, step) => sum + step.totalStitches, 0) +[m
+[31m-    (!current?.isNote ? Math.min(stitchIndex, current?.stitches.length) : 0);[m
+[32m+[m[32m    (!current?.isNote && !trackByRound[m
+[32m+[m[32m      ? Math.min(stitchIndex, current?.stitches.length)[m
+[32m+[m[32m      : 0);[m
+ [m
+   const startTracker = () => {[m
+     setSteps(parsePattern(pattern));[m
+[36m@@ -141,24 +201,28 @@[m [mfunction App() {[m
+ [m
+       if (e.key === " ") {[m
+         e.preventDefault();[m
+[31m-        if (!current.isNote && stitchIndex + 1 < current.stitches.length) {[m
+[32m+[m[32m        if (trackByRound || current.isNote || stitchIndex + 1 >= current.stitches.length) {[m
+[32m+[m[32m          if (index < steps.length - 1) {[m
+[32m+[m[32m            setIndex((i) => i + 1);[m
+[32m+[m[32m            setStitchIndex(0);[m
+[32m+[m[32m          }[m
+[32m+[m[32m        } else {[m
+           setStitchIndex((s) => s + 1);[m
+[31m-        } else if (index < steps.length - 1) {[m
+[31m-          setIndex((i) => i + 1);[m
+[31m-          setStitchIndex(0);[m
+         }[m
+       } else if (e.key === "Backspace") {[m
+         e.preventDefault();[m
+[31m-        if (!current.isNote && stitchIndex > 0) {[m
+[32m+[m[32m        if (trackByRound || current.isNote || stitchIndex === 0) {[m
+[32m+[m[32m          if (index > 0) {[m
+[32m+[m[32m            const prev = steps[index - 1];[m
+[32m+[m[32m            setIndex((i) => i - 1);[m
+[32m+[m[32m            setStitchIndex(trackByRound || prev.isNote ? 0 : prev.stitches.length - 1);[m
+[32m+[m[32m          }[m
+[32m+[m[32m        } else {[m
+           setStitchIndex((s) => s - 1);[m
+[31m-        } else if (index > 0) {[m
+[31m-          const prev = steps[index - 1];[m
+[31m-          setIndex((i) => i - 1);[m
+[31m-          setStitchIndex(prev?.stitches.length || 0);[m
+         }[m
+       }[m
+     },[m
+[31m-    [trackingStarted, trackingPaused, current, index, stitchIndex, steps][m
+[32m+[m[32m    [trackingStarted, trackingPaused, current, index, stitchIndex, steps, trackByRound][m
+   );[m
+ [m
+   useEffect(() => {[m
+[36m@@ -190,13 +254,108 @@[m [mfunction App() {[m
+     );[m
+   };[m
+ [m
+[32m+[m[32m  const getStitchColor = (stitchType) => {[m
+[32m+[m[32m    if (!settings.colorCodeStitches) return '#7a4fd2';[m
+[32m+[m[32m    const colors = {[m
+[32m+[m[32m      sc: '#7a4fd2',    // Original purple[m
+[32m+[m[32m      inc: '#8e4fd2',   // Slightly pink-purple for increases[m
+[32m+[m[32m      dec: '#724fd2'    // Slightly darker purple[m
+[32m+[m[32m    };[m
+[32m+[m[32m    return colors[stitchType] || '#7a4fd2';[m
+[32m+[m[32m  };[m
+[32m+[m
+[32m+[m[32m  const getDarkerColor = (stitchType) => {[m
+[32m+[m[32m    if (!settings.colorCodeStitches) return '#3d1380';[m
+[32m+[m[32m    const colors = {[m
+[32m+[m[32m      sc: '#3d1380',    // Darker version of original[m
+[32m+[m[32m      inc: '#451380',   // Darker version of pink-purple[m
+[32m+[m[32m      dec: '#381380'    // Darker version of dec[m
+[32m+[m[32m    };[m
+[32m+[m[32m    return colors[stitchType] || '#3d1380';[m
+[32m+[m[32m  };[m
+[32m+[m
+[32m+[m[32m  const toggleSetting = (setting) => {[m
+[32m+[m[32m    setSettings(prev => ({[m
+[32m+[m[32m      ...prev,[m
+[32m+[m[32m      [setting]: !prev[setting][m
+[32m+[m[32m    }));[m
+[32m+[m[32m  };[m
+[32m+[m
+[32m+[m[32m  const SettingsMenu = () => {[m
+[32m+[m[32m    const isDisabled = !trackingStarted || trackingPaused;[m
+[32m+[m[32m    const disabledMessage = trackingPaused[m[41m [m
+[32m+[m[32m      ? "Resume the tracker to adjust display settings"[m
+[32m+[m[32m      : "Start the tracker to customize how your pattern is displayed";[m
+[32m+[m[41m    [m
+[32m+[m[32m    return ([m
+[32m+[m[32m    <div className={`flex flex-col gap-1.5 ${isDisabled ? 'opacity-50' : ''}`}>[m
+[32m+[m[32m      <button[m
+[32m+[m[32m        onClick={() => !isDisabled && toggleSetting('colorCodeStitches')}[m
+[32m+[m[32m        className={`group flex items-center justify-between w-full px-3 py-1.5 rounded-md transition-colors ${[m
+[32m+[m[32m          !isDisabled && 'hover:bg-white hover:bg-opacity-5'[m
+[32m+[m[32m        } ${isDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}[m
+[32m+[m[32m        title={isDisabled ? disabledMessage : "Use different colors for each stitch type"}[m
+[32m+[m[32m        disabled={isDisabled}[m
+[32m+[m[32m      >[m
+[32m+[m[32m        <span className="text-sm text-white text-opacity-80 group-hover:text-opacity-100">[m
+[32m+[m[32m          Color Code[m
+[32m+[m[32m        </span>[m
+[32m+[m[32m        <div className={`w-7 h-7 rounded-lg transition-all border border-white border-opacity-10 ${[m
+[32m+[m[32m          settings.colorCodeStitches && !isDisabled[m
+[32m+[m[32m            ? 'bg-[#824fd2] shadow-[0_0_12px_rgba(130,79,210,0.3)]'[m
+[32m+[m[32m            : 'bg-white bg-opacity-5'[m
+[32m+[m[32m        }`}>[m
+[32m+[m[32m          <svg[m[41m [m
+[32m+[m[32m            viewBox="0 0 24 24"[m[41m [m
+[32m+[m[32m            className={`w-full h-full p-1.5 transition-opacity ${[m
+[32m+[m[32m              settings.colorCodeStitches && !isDisabled ? 'opacity-100' : 'opacity-30'[m
+[32m+[m[32m            }`}[m
+[32m+[m[32m          >[m
+[32m+[m[32m            <path[m[41m [m
+[32m+[m[32m              d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"[m[41m [m
+[32m+[m[32m              fill="white"[m
+[32m+[m[32m            />[m
+[32m+[m[32m          </svg>[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m      </button>[m
+[32m+[m
+[32m+[m[32m      <button[m
+[32m+[m[32m        onClick={() => !isDisabled && toggleSetting('groupClusters')}[m
+[32m+[m[32m        className={`group flex items-center justify-between w-full px-3 py-1.5 rounded-md transition-colors ${[m
+[32m+[m[32m          !isDisabled && 'hover:bg-white hover:bg-opacity-5'[m
+[32m+[m[32m        } ${isDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}[m
+[32m+[m[32m        title={isDisabled ? disabledMessage : "Group repeated stitch patterns together"}[m
+[32m+[m[32m        disabled={isDisabled}[m
+[32m+[m[32m      >[m
+[32m+[m[32m        <span className="text-sm text-white text-opacity-80 group-hover:text-opacity-100">[m
+[32m+[m[32m          Group Clusters[m
+[32m+[m[32m        </span>[m
+[32m+[m[32m        <div className={`w-7 h-7 rounded-lg transition-all border border-white border-opacity-10 ${[m
+[32m+[m[32m          settings.groupClusters && !isDisabled[m
+[32m+[m[32m            ? 'bg-[#824fd2] shadow-[0_0_12px_rgba(130,79,210,0.3)]'[m
+[32m+[m[32m            : 'bg-white bg-opacity-5'[m
+[32m+[m[32m        }`}>[m
+[32m+[m[32m          <svg[m[41m [m
+[32m+[m[32m            viewBox="0 0 24 24"[m[41m [m
+[32m+[m[32m            className={`w-full h-full p-1.5 transition-opacity ${[m
+[32m+[m[32m              settings.groupClusters && !isDisabled ? 'opacity-100' : 'opacity-30'[m
+[32m+[m[32m            }`}[m
+[32m+[m[32m          >[m
+[32m+[m[32m            <path[m[41m [m
+[32m+[m[32m              d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"[m[41m [m
+[32m+[m[32m              fill="white"[m
+[32m+[m[32m            />[m
+[32m+[m[32m          </svg>[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m      </button>[m
+[32m+[m[32m    </div>[m
+[32m+[m[32m    );[m
+[32m+[m[32m  };[m
+[32m+[m
+   return ([m
+     <div className="min-h-screen flex flex-col items-center bg-gradient-to-br from-[#8a54c4] via-[#935ef9] to-[#b35ccc] text-white p-6">[m
+[31m-      <div className="flex w-full justify-between items-center px-6 mb-4">[m
+[32m+[m[32m      <div className="w-full px-6 mb-8">[m
+         <h1 className="text-3xl font-bold">Crochet Pattern Tracker</h1>[m
+[31m-        <h2 className="text-lg font-semibold bg-[#8a54c4] px-4 py-2 rounded-lg">[m
+[31m-          Total Progress: {completedStitches} / {totalStitches}[m
+[31m-        </h2>[m
+       </div>[m
+ [m
+       <div className="w-[50%] relative mb-2">[m
+[36m@@ -252,9 +411,48 @@[m [mfunction App() {[m
+         >[m
+           {showAll ? "Hide Extra Rounds" : "Display All Rounds"}[m
+         </button>[m
+[32m+[m
+[32m+[m[32m        <button[m
+[32m+[m[32m          disabled={!trackingStarted || trackingPaused}[m
+[32m+[m[32m          onClick={() => setTrackByRound((prev) => !prev)}[m
+[32m+[m[32m          className={`px-4 py-2 rounded-lg ${[m
+[32m+[m[32m            trackingStarted && !trackingPaused[m
+[32m+[m[32m              ? "bg-[#7a4fd2]"[m
+[32m+[m[32m              : "bg-[#7a4fd2] opacity-40 cursor-not-allowed"[m
+[32m+[m[32m          }`}[m
+[32m+[m[32m        >[m
+[32m+[m[32m          {trackByRound ? "Track Stitches" : "Track Rounds"}[m
+[32m+[m[32m        </button>[m
+       </div>[m
+ [m
+[31m-      <div className="w-[70%] space-y-6">[m
+[32m+[m[32m      <div className="fixed right-6 top-32">[m
+[32m+[m[32m        <div className="bg-[#8a54c4] rounded-lg shadow-lg overflow-hidden w-56">[m
+[32m+[m[32m          <div className="px-4 py-3 border-b border-white border-opacity-10">[m
+[32m+[m[32m            <span className="text-xs text-white text-opacity-60">Total Progress</span>[m
+[32m+[m[32m            <div className="flex items-center gap-3 mt-1.5">[m
+[32m+[m[32m              <span className="font-semibold whitespace-nowrap">{completedStitches} / {totalStitches}</span>[m
+[32m+[m[32m              <div className="flex-1 bg-white bg-opacity-10 rounded-full h-1.5 overflow-hidden">[m
+[32m+[m[32m                <div[m[41m [m
+[32m+[m[32m                  className="h-full bg-white transition-all duration-300"[m[41m [m
+[32m+[m[32m                  style={{ width: `${(completedStitches / totalStitches) * 100}%` }}[m
+[32m+[m[32m                />[m
+[32m+[m[32m              </div>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m          <div className="px-4 py-3">[m
+[32m+[m[32m            <span className="text-xs text-white text-opacity-60 block mb-1.5">Display Options</span>[m
+[32m+[m[32m            <SettingsMenu />[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m      </div>[m
+[32m+[m
+[32m+[m[32m      {trackingStarted && trackingPaused && ([m
+[32m+[m[32m        <div className="text-sm bg-white bg-opacity-10 text-center text-white py-2 rounded-md mb-4 w-[70%]">[m
+[32m+[m[32m          🧵 Tracker is paused. Click <strong>Resume</strong> or <strong>Restart</strong> to continue.[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m      )}[m
+[32m+[m
+[32m+[m[32m      <div className={`w-[70%] ${trackBy

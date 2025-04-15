@@ -10,6 +10,24 @@ const generatePattern = () => {
   return lines.join("\n");
 };
 
+const getStitchColor = (stitchType) => {
+  const colors = {
+    sc: '#7a4fd2',    // Original purple
+    inc: '#824fd2',   // Slightly lighter purple
+    dec: '#724fd2'    // Slightly darker purple
+  };
+  return colors[stitchType] || '#7a4fd2';
+};
+
+const getDarkerColor = (stitchType) => {
+  const colors = {
+    sc: '#3d1380',    // Darker version of original
+    inc: '#421380',   // Darker version of inc
+    dec: '#381380'    // Darker version of dec
+  };
+  return colors[stitchType] || '#3d1380';
+};
+
 const parsePattern = (pattern) => {
   const lines = pattern.split("\n");
   let roundNumber = 1;
@@ -28,6 +46,7 @@ const parsePattern = (pattern) => {
     }
 
     const regex = /(\d*)\s*(sc|inc|dec)/g;
+    const clusterMatch = trimmed.match(/\((.*?)\)\s*x\s*(\d+)/);
     const expanded = trimmed.replace(/\((.*?)\)\s*x\s*(\d+)/g, (_, group, count) =>
       Array(Number(count)).fill(group).join(" ")
     );
@@ -35,12 +54,34 @@ const parsePattern = (pattern) => {
     let match;
     let stitches = [];
     let totalStitches = 0;
+    let clusters = [];
 
-    while ((match = regex.exec(expanded)) !== null) {
-      const count = match[1] ? parseInt(match[1]) : 1;
-      const stitch = match[2];
-      stitches.push(...Array(count).fill(stitch));
-      totalStitches += count;
+    if (clusterMatch) {
+      const [_, clusterPattern, repeatCount] = clusterMatch;
+      const clusterStitches = [];
+      let tempRegex = /(\d*)\s*(sc|inc|dec)/g;
+      while ((match = tempRegex.exec(clusterPattern)) !== null) {
+        const count = match[1] ? parseInt(match[1]) : 1;
+        const stitch = match[2];
+        clusterStitches.push(...Array(count).fill(stitch));
+      }
+
+      for (let i = 0; i < Number(repeatCount); i++) {
+        clusters.push({
+          number: i + 1,
+          stitches: [...clusterStitches]
+        });
+        stitches.push(...clusterStitches);
+        totalStitches += clusterStitches.length;
+      }
+    } else {
+      while ((match = regex.exec(expanded)) !== null) {
+        const count = match[1] ? parseInt(match[1]) : 1;
+        const stitch = match[2];
+        stitches.push(...Array(count).fill(stitch));
+        totalStitches += count;
+      }
+      clusters = [{number: 1, stitches: stitches}];
     }
 
     return {
@@ -48,6 +89,7 @@ const parsePattern = (pattern) => {
       isNote: false,
       instruction: null,
       stitches,
+      clusters,
       totalStitches,
       raw: trimmed,
     };
@@ -83,7 +125,19 @@ function App() {
   const [showAll, setShowAll] = useState(false);
   const [trackingStarted, setTrackingStarted] = useState(false);
   const [trackingPaused, setTrackingPaused] = useState(false);
+  const [trackByRound, setTrackByRound] = useState(false);
+  const [settings, setSettings] = useState(() => {
+    const saved = localStorage.getItem('patternTrackerSettings');
+    return saved ? JSON.parse(saved) : {
+      colorCodeStitches: true,
+      groupClusters: true
+    };
+  });
   const currentRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem('patternTrackerSettings', JSON.stringify(settings));
+  }, [settings]);
 
   useEffect(() => {
     setSteps(parsePattern(pattern));
@@ -96,10 +150,14 @@ function App() {
   }, [showAll, index]);
 
   const current = steps[index];
-  const previous = steps[index - 1];
-  const next = steps[index + 1];
 
-  const displaySteps = showAll ? steps : [previous, current, next].filter(Boolean);
+  const getDisplaySteps = () => {
+    if (showAll) return steps;
+    const range = trackByRound ? 2 : 1;
+    return steps.slice(Math.max(0, index - range), index + range + 1);
+  };
+
+  const displaySteps = getDisplaySteps();
 
   const totalStitches = steps
     .filter((s) => !s.isNote)
@@ -110,7 +168,9 @@ function App() {
       .slice(0, index)
       .filter((s) => !s.isNote)
       .reduce((sum, step) => sum + step.totalStitches, 0) +
-    (!current?.isNote ? Math.min(stitchIndex, current?.stitches.length) : 0);
+    (!current?.isNote && !trackByRound
+      ? Math.min(stitchIndex, current?.stitches.length)
+      : 0);
 
   const startTracker = () => {
     setSteps(parsePattern(pattern));
@@ -141,24 +201,28 @@ function App() {
 
       if (e.key === " ") {
         e.preventDefault();
-        if (!current.isNote && stitchIndex + 1 < current.stitches.length) {
+        if (trackByRound || current.isNote || stitchIndex + 1 >= current.stitches.length) {
+          if (index < steps.length - 1) {
+            setIndex((i) => i + 1);
+            setStitchIndex(0);
+          }
+        } else {
           setStitchIndex((s) => s + 1);
-        } else if (index < steps.length - 1) {
-          setIndex((i) => i + 1);
-          setStitchIndex(0);
         }
       } else if (e.key === "Backspace") {
         e.preventDefault();
-        if (!current.isNote && stitchIndex > 0) {
+        if (trackByRound || current.isNote || stitchIndex === 0) {
+          if (index > 0) {
+            const prev = steps[index - 1];
+            setIndex((i) => i - 1);
+            setStitchIndex(trackByRound || prev.isNote ? 0 : prev.stitches.length - 1);
+          }
+        } else {
           setStitchIndex((s) => s - 1);
-        } else if (index > 0) {
-          const prev = steps[index - 1];
-          setIndex((i) => i - 1);
-          setStitchIndex(prev?.stitches.length || 0);
         }
       }
     },
-    [trackingStarted, trackingPaused, current, index, stitchIndex, steps]
+    [trackingStarted, trackingPaused, current, index, stitchIndex, steps, trackByRound]
   );
 
   useEffect(() => {
@@ -190,13 +254,108 @@ function App() {
     );
   };
 
+  const getStitchColor = (stitchType) => {
+    if (!settings.colorCodeStitches) return '#7a4fd2';
+    const colors = {
+      sc: '#7a4fd2',    // Original purple
+      inc: '#8e4fd2',   // Slightly pink-purple for increases
+      dec: '#724fd2'    // Slightly darker purple
+    };
+    return colors[stitchType] || '#7a4fd2';
+  };
+
+  const getDarkerColor = (stitchType) => {
+    if (!settings.colorCodeStitches) return '#3d1380';
+    const colors = {
+      sc: '#3d1380',    // Darker version of original
+      inc: '#451380',   // Darker version of pink-purple
+      dec: '#381380'    // Darker version of dec
+    };
+    return colors[stitchType] || '#3d1380';
+  };
+
+  const toggleSetting = (setting) => {
+    setSettings(prev => ({
+      ...prev,
+      [setting]: !prev[setting]
+    }));
+  };
+
+  const SettingsMenu = () => {
+    const isDisabled = !trackingStarted || trackingPaused;
+    const disabledMessage = trackingPaused 
+      ? "Resume the tracker to adjust display settings"
+      : "Start the tracker to customize how your pattern is displayed";
+    
+    return (
+    <div className={`flex flex-col gap-1.5 ${isDisabled ? 'opacity-50' : ''}`}>
+      <button
+        onClick={() => !isDisabled && toggleSetting('colorCodeStitches')}
+        className={`group flex items-center justify-between w-full px-3 py-1.5 rounded-md transition-colors ${
+          !isDisabled && 'hover:bg-white hover:bg-opacity-5'
+        } ${isDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+        title={isDisabled ? disabledMessage : "Use different colors for each stitch type"}
+        disabled={isDisabled}
+      >
+        <span className="text-sm text-white text-opacity-80 group-hover:text-opacity-100">
+          Color Code
+        </span>
+        <div className={`w-7 h-7 rounded-lg transition-all border border-white border-opacity-10 ${
+          settings.colorCodeStitches && !isDisabled
+            ? 'bg-[#824fd2] shadow-[0_0_12px_rgba(130,79,210,0.3)]'
+            : 'bg-white bg-opacity-5'
+        }`}>
+          <svg 
+            viewBox="0 0 24 24" 
+            className={`w-full h-full p-1.5 transition-opacity ${
+              settings.colorCodeStitches && !isDisabled ? 'opacity-100' : 'opacity-30'
+            }`}
+          >
+            <path 
+              d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" 
+              fill="white"
+            />
+          </svg>
+        </div>
+      </button>
+
+      <button
+        onClick={() => !isDisabled && toggleSetting('groupClusters')}
+        className={`group flex items-center justify-between w-full px-3 py-1.5 rounded-md transition-colors ${
+          !isDisabled && 'hover:bg-white hover:bg-opacity-5'
+        } ${isDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+        title={isDisabled ? disabledMessage : "Group repeated stitch patterns together"}
+        disabled={isDisabled}
+      >
+        <span className="text-sm text-white text-opacity-80 group-hover:text-opacity-100">
+          Group Clusters
+        </span>
+        <div className={`w-7 h-7 rounded-lg transition-all border border-white border-opacity-10 ${
+          settings.groupClusters && !isDisabled
+            ? 'bg-[#824fd2] shadow-[0_0_12px_rgba(130,79,210,0.3)]'
+            : 'bg-white bg-opacity-5'
+        }`}>
+          <svg 
+            viewBox="0 0 24 24" 
+            className={`w-full h-full p-1.5 transition-opacity ${
+              settings.groupClusters && !isDisabled ? 'opacity-100' : 'opacity-30'
+            }`}
+          >
+            <path 
+              d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" 
+              fill="white"
+            />
+          </svg>
+        </div>
+      </button>
+    </div>
+    );
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center bg-gradient-to-br from-[#8a54c4] via-[#935ef9] to-[#b35ccc] text-white p-6">
-      <div className="flex w-full justify-between items-center px-6 mb-4">
+      <div className="w-full px-6 mb-8">
         <h1 className="text-3xl font-bold">Crochet Pattern Tracker</h1>
-        <h2 className="text-lg font-semibold bg-[#8a54c4] px-4 py-2 rounded-lg">
-          Total Progress: {completedStitches} / {totalStitches}
-        </h2>
       </div>
 
       <div className="w-[50%] relative mb-2">
@@ -252,9 +411,48 @@ function App() {
         >
           {showAll ? "Hide Extra Rounds" : "Display All Rounds"}
         </button>
+
+        <button
+          disabled={!trackingStarted || trackingPaused}
+          onClick={() => setTrackByRound((prev) => !prev)}
+          className={`px-4 py-2 rounded-lg ${
+            trackingStarted && !trackingPaused
+              ? "bg-[#7a4fd2]"
+              : "bg-[#7a4fd2] opacity-40 cursor-not-allowed"
+          }`}
+        >
+          {trackByRound ? "Track Stitches" : "Track Rounds"}
+        </button>
       </div>
 
-      <div className="w-[70%] space-y-6">
+      <div className="fixed right-6 top-32">
+        <div className="bg-[#8a54c4] rounded-lg shadow-lg overflow-hidden w-56">
+          <div className="px-4 py-3 border-b border-white border-opacity-10">
+            <span className="text-xs text-white text-opacity-60">Total Progress</span>
+            <div className="flex items-center gap-3 mt-1.5">
+              <span className="font-semibold whitespace-nowrap">{completedStitches} / {totalStitches}</span>
+              <div className="flex-1 bg-white bg-opacity-10 rounded-full h-1.5 overflow-hidden">
+                <div 
+                  className="h-full bg-white transition-all duration-300" 
+                  style={{ width: `${(completedStitches / totalStitches) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="px-4 py-3">
+            <span className="text-xs text-white text-opacity-60 block mb-1.5">Display Options</span>
+            <SettingsMenu />
+          </div>
+        </div>
+      </div>
+
+      {trackingStarted && trackingPaused && (
+        <div className="text-sm bg-white bg-opacity-10 text-center text-white py-2 rounded-md mb-4 w-[70%]">
+          🧵 Tracker is paused. Click <strong>Resume</strong> or <strong>Restart</strong> to continue.
+        </div>
+      )}
+
+      <div className={`w-[70%] ${trackByRound ? "space-y-3" : "space-y-6"}`}>
         {displaySteps.map((step, i) => {
           const stepIndex = steps.indexOf(step);
           const isCurrent = stepIndex === index;
@@ -282,7 +480,9 @@ function App() {
                   </h3>
                   {!step.isNote && (
                     <h3 className="text-md font-bold">
-                      {isCurrent
+                      {trackByRound
+                        ? `${step.totalStitches}`
+                        : isCurrent
                         ? `${Math.min(stitchIndex, step.stitches.length)}/${step.totalStitches}`
                         : `${step.stitches.length}/${step.totalStitches}`}
                     </h3>
@@ -290,22 +490,62 @@ function App() {
                 </div>
               </div>
 
-              {!step.isNote && (
+              {!step.isNote && !trackByRound && (
                 <div className={`p-4 rounded-lg ${isCurrent ? "opacity-100" : "opacity-50"}`}>
-                  <div className="flex flex-wrap gap-2">
-                    {step.stitches.map((s, si) => (
-                      <span
-                        key={si}
-                        onClick={() => handleClick(stepIndex, si)}
-                        className={`px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
-                          isCurrent && si === stitchIndex
-                            ? "bg-[#3d1380] text-white border-[#210a4a]"
-                            : "bg-[#8a54c4] text-gray-200 border-[#7359a1]"
-                        }`}
-                      >
-                        {s}
-                      </span>
-                    ))}
+                  <div className={`flex flex-wrap ${settings.groupClusters ? 'gap-4' : 'gap-2'}`}>
+                    {settings.groupClusters ? (
+                      step.clusters.map((cluster, clusterIndex) => (
+                        <div 
+                          key={clusterIndex}
+                          className="relative flex flex-wrap gap-2 bg-[#ffffff08] rounded-lg p-3 pr-8"
+                        >
+                          {cluster.stitches.map((s, si) => {
+                            const globalStitchIndex = cluster.stitches.slice(0, si).length + 
+                              step.clusters.slice(0, clusterIndex).reduce((acc, c) => acc + c.stitches.length, 0);
+                            return (
+                              <span
+                                key={si}
+                                onClick={() => handleClick(stepIndex, globalStitchIndex)}
+                                className={`px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
+                                  isCurrent && globalStitchIndex === stitchIndex
+                                    ? "text-white border-[#210a4a]"
+                                    : "text-gray-200 border-[#7359a1]"
+                                }`}
+                                style={{
+                                  backgroundColor: isCurrent && globalStitchIndex === stitchIndex 
+                                    ? getDarkerColor(s)
+                                    : getStitchColor(s)
+                                }}
+                              >
+                                {s}
+                              </span>
+                            );
+                          })}
+                          <span className="absolute top-1 right-1 text-xs text-gray-400 opacity-60">
+                            {cluster.number}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      step.stitches.map((s, si) => (
+                        <span
+                          key={si}
+                          onClick={() => handleClick(stepIndex, si)}
+                          className={`px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
+                            isCurrent && si === stitchIndex
+                              ? "text-white border-[#210a4a]"
+                              : "text-gray-200 border-[#7359a1]"
+                          }`}
+                          style={{
+                            backgroundColor: isCurrent && si === stitchIndex 
+                              ? getDarkerColor(s)
+                              : getStitchColor(s)
+                          }}
+                        >
+                          {s}
+                        </span>
+                      ))
+                    )}
                   </div>
                 </div>
               )}
@@ -313,6 +553,17 @@ function App() {
           );
         })}
       </div>
+
+      <p className="mt-6 text-sm opacity-80">
+        Paste your pattern and click <strong>Start Tracker</strong> to begin.
+      </p>
+      <p className="text-sm opacity-80">
+        Press <strong>Space</strong> to move forward, <strong>Backspace</strong> to undo, or{" "}
+        <strong>click</strong> a stitch or note to select it.
+      </p>
+      <p className="text-sm opacity-80 mt-1">
+        Add text instructions by starting a line with <strong>//</strong>
+      </p>
     </div>
   );
 }
