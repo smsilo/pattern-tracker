@@ -4,12 +4,8 @@ const generatePattern = () => {
   let lines = [];
   for (let i = 1; i <= 30; i++) {
     lines.push(`Round ${i}: (${Math.max(1, Math.floor(i / 3))} sc, inc) x 6`);
-    if (i === 3) {
-      lines.push(`// Sample note between round 3 and 4`);
-    }
-    if (i === 10 || i === 20) {
-      lines.push(`// Note between round ${i} and ${i + 1}`);
-    }
+    if (i === 3) lines.push(`// Sample note between round 3 and 4`);
+    if (i === 10 || i === 20) lines.push(`// Note between round ${i} and ${i + 1}`);
   }
   return lines.join("\n");
 };
@@ -124,9 +120,7 @@ function App() {
     setTrackingPaused(false);
   };
 
-  const pauseTracker = () => {
-    setTrackingPaused(true);
-  };
+  const pauseTracker = () => setTrackingPaused(true);
 
   const resumeTracker = () => {
     const newSteps = parsePattern(pattern);
@@ -178,6 +172,24 @@ function App() {
     setStitchIndex(stitchIdx);
   };
 
+  const renderStatusIcon = (stepIndex) => {
+    const isCompleted = stepIndex < index;
+    const isCurrent = stepIndex === index;
+    return (
+      <div className="w-5 h-5 mr-3 flex items-center justify-center">
+        {isCompleted ? (
+          <div className="w-4 h-4 rounded-full border border-white text-white text-xs flex items-center justify-center">
+            ✓
+          </div>
+        ) : isCurrent ? (
+          <div className="w-4 h-4 rounded-full bg-white opacity-70" />
+        ) : (
+          <div className="w-4 h-4 rounded-full border border-white" />
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center bg-gradient-to-br from-[#8a54c4] via-[#935ef9] to-[#b35ccc] text-white p-6">
       <div className="flex w-full justify-between items-center px-6 mb-4">
@@ -203,19 +215,14 @@ function App() {
 
       <div className="flex gap-4 mb-4 flex-wrap">
         {!trackingStarted && (
-          <button
-            onClick={startTracker}
-            className="bg-[#7a4fd2] px-4 py-2 rounded-lg flex items-center"
-          >
+          <button onClick={startTracker} className="bg-[#7a4fd2] px-4 py-2 rounded-lg flex items-center">
+            <Icon type="play" />
             Start Tracker
           </button>
         )}
 
         {trackingStarted && !trackingPaused && (
-          <button
-            onClick={pauseTracker}
-            className="bg-[#7a4fd2] px-4 py-2 rounded-lg flex items-center"
-          >
+          <button onClick={pauseTracker} className="bg-[#7a4fd2] px-4 py-2 rounded-lg flex items-center">
             <Icon type="pause" />
             Pause Tracker
           </button>
@@ -223,17 +230,11 @@ function App() {
 
         {trackingStarted && trackingPaused && (
           <>
-            <button
-              onClick={resumeTracker}
-              className="bg-[#7a4fd2] px-4 py-2 rounded-lg flex items-center"
-            >
+            <button onClick={resumeTracker} className="bg-[#7a4fd2] px-4 py-2 rounded-lg flex items-center">
               <Icon type="play" />
               Resume Tracker
             </button>
-            <button
-              onClick={startTracker}
-              className="bg-[#7a4fd2] px-4 py-2 rounded-lg flex items-center"
-            >
+            <button onClick={startTracker} className="bg-[#7a4fd2] px-4 py-2 rounded-lg flex items-center">
               <Icon type="restart" />
               Restart Tracker
             </button>
@@ -253,86 +254,65 @@ function App() {
         </button>
       </div>
 
-      {trackingStarted && trackingPaused && (
-        <div className="text-sm bg-white bg-opacity-10 text-center text-white py-2 rounded-md mb-4 w-[70%]">
-          🧵 Tracker is paused. Click <strong>Resume</strong> or <strong>Restart</strong> to continue.
-        </div>
-      )}
-
       <div className="w-[70%] space-y-6">
         {displaySteps.map((step, i) => {
           const stepIndex = steps.indexOf(step);
           const isCurrent = stepIndex === index;
-          const containerClass = isCurrent
-            ? "bg-[#5b1eb8] scale-[1.02] transition-all duration-500 ease-in-out"
-            : "bg-[#8a54c4]";
-
-          const complete = isCurrent ? Math.min(stitchIndex, step.stitches.length) : 0;
-
           const ref = isCurrent && showAll ? currentRef : null;
 
-          if (step.isNote) {
-            return (
-              <div key={step.id} className="space-y-2">
-                <div
-                  ref={ref}
-                  onClick={() => handleClick(stepIndex, 0)}
-                  className={`flex justify-between items-center px-4 py-2 rounded-lg cursor-pointer ${containerClass}`}
-                >
-                  <h3 className="text-md font-bold flex items-center">
-                    <span className="mr-2">📌</span> {step.instruction}
-                  </h3>
-                </div>
-              </div>
-            );
-          }
+          const roundClass = isCurrent
+            ? "bg-[#5b1eb8] scale-[1.02] transition-all duration-500 ease-in-out"
+            : "bg-[#8a54c4] opacity-50";
 
           return (
-            <div key={step.id} className="space-y-2">
+            <div key={step.id} className="space-y-2 relative">
               <div
                 ref={ref}
-                className={`flex justify-between items-center px-4 py-2 rounded-lg ${containerClass}`}
+                onClick={() => handleClick(stepIndex, 0)}
+                className={`flex items-center px-4 py-2 rounded-lg cursor-pointer ${roundClass}`}
               >
-                <h3 className="text-md font-bold">
-                  Round {step.id}: {step.raw.match(/\(.*?\) x \d+/)?.[0] || step.raw} [{step.totalStitches}]
-                </h3>
-                <h3 className="text-md font-bold">
-                  {complete}/{step.totalStitches}
-                </h3>
-              </div>
-
-              <div className={`p-4 rounded-lg ${isCurrent ? "opacity-100" : "opacity-50"}`}>
-                <div className="flex flex-wrap gap-2">
-                  {step.stitches.map((s, si) => (
-                    <span
-                      key={si}
-                      onClick={() => handleClick(stepIndex, si)}
-                      className={`px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
-                        isCurrent && si === stitchIndex
-                          ? "bg-[#3d1380] text-white border-[#210a4a]"
-                          : "bg-[#8a54c4] text-gray-200 border-[#7359a1]"
-                      }`}
-                    >
-                      {s}
-                    </span>
-                  ))}
+                {renderStatusIcon(stepIndex)}
+                <div className="flex justify-between w-full items-center">
+                  <h3 className="text-md font-bold">
+                    {step.isNote
+                      ? `📌 ${step.instruction}`
+                      : `Round ${step.id}: ${
+                          step.raw.match(/\(.*?\) x \d+/)?.[0] || step.raw
+                        } [${step.totalStitches}]`}
+                  </h3>
+                  {!step.isNote && (
+                    <h3 className="text-md font-bold">
+                      {isCurrent
+                        ? `${Math.min(stitchIndex, step.stitches.length)}/${step.totalStitches}`
+                        : `${step.stitches.length}/${step.totalStitches}`}
+                    </h3>
+                  )}
                 </div>
               </div>
+
+              {!step.isNote && (
+                <div className={`p-4 rounded-lg ${isCurrent ? "opacity-100" : "opacity-50"}`}>
+                  <div className="flex flex-wrap gap-2">
+                    {step.stitches.map((s, si) => (
+                      <span
+                        key={si}
+                        onClick={() => handleClick(stepIndex, si)}
+                        className={`px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
+                          isCurrent && si === stitchIndex
+                            ? "bg-[#3d1380] text-white border-[#210a4a]"
+                            : "bg-[#8a54c4] text-gray-200 border-[#7359a1]"
+                        }`}
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
-
-      <p className="mt-6 text-sm opacity-80">
-        Paste your pattern and click <strong>Start Tracker</strong> to begin.
-      </p>
-      <p className="text-sm opacity-80">
-        Press <strong>Space</strong> to move forward, <strong>Backspace</strong> to undo, or{" "}
-        <strong>click</strong> a stitch or note to select it.
-      </p>
-      <p className="text-sm opacity-80 mt-1">
-        Add text instructions by starting a line with <strong>//</strong>
-      </p>
     </div>
   );
 }
