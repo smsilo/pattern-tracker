@@ -97,10 +97,14 @@ function App() {
   }, [showAll, index]);
 
   const current = steps[index];
-  const previous = steps[index - 1];
-  const next = steps[index + 1];
 
-  const displaySteps = showAll ? steps : [previous, current, next].filter(Boolean);
+  const getDisplaySteps = () => {
+    if (showAll) return steps;
+    const range = trackByRound ? 2 : 1;
+    return steps.slice(Math.max(0, index - range), index + range + 1);
+  };
+
+  const displaySteps = getDisplaySteps();
 
   const totalStitches = steps
     .filter((s) => !s.isNote)
@@ -279,7 +283,7 @@ function App() {
         </div>
       )}
 
-      <div className="w-[70%] space-y-6">
+      <div className={`w-[70%] ${trackByRound ? "space-y-3" : "space-y-6"}`}>
         {displaySteps.map((step, i) => {
           const stepIndex = steps.indexOf(step);
           const isCurrent = stepIndex === index;
@@ -307,7 +311,9 @@ function App() {
                   </h3>
                   {!step.isNote && (
                     <h3 className="text-md font-bold">
-                      {isCurrent && !trackByRound
+                      {trackByRound
+                        ? `${step.totalStitches}`
+                        : isCurrent
                         ? `${Math.min(stitchIndex, step.stitches.length)}/${step.totalStitches}`
                         : `${step.stitches.length}/${step.totalStitches}`}
                     </h3>
@@ -315,25 +321,23 @@ function App() {
                 </div>
               </div>
 
-              {!step.isNote && (
+              {!step.isNote && !trackByRound && (
                 <div className={`p-4 rounded-lg ${isCurrent ? "opacity-100" : "opacity-50"}`}>
-                  {!trackByRound && (
-                    <div className="flex flex-wrap gap-2">
-                      {step.stitches.map((s, si) => (
-                        <span
-                          key={si}
-                          onClick={() => handleClick(stepIndex, si)}
-                          className={`px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
-                            isCurrent && si === stitchIndex
-                              ? "bg-[#3d1380] text-white border-[#210a4a]"
-                              : "bg-[#8a54c4] text-gray-200 border-[#7359a1]"
-                          }`}
-                        >
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {step.stitches.map((s, si) => (
+                      <span
+                        key={si}
+                        onClick={() => handleClick(stepIndex, si)}
+                        className={`px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
+                          isCurrent && si === stitchIndex
+                            ? "bg-[#3d1380] text-white border-[#210a4a]"
+                            : "bg-[#8a54c4] text-gray-200 border-[#7359a1]"
+                        }`}
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
